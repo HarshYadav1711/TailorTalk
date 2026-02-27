@@ -5,7 +5,10 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.agent import answer_question
+try:
+    from backend.agent import answer_question
+except ImportError:
+    from agent import answer_question
 
 app = FastAPI(title="Titanic Chat Agent")
 

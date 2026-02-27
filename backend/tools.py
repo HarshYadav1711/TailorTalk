@@ -7,13 +7,17 @@ import io
 from typing import Any
 
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from backend.data_loader import load_titanic_df
+matplotlib.use("Agg")
+
+try:
+    from backend.data_loader import load_titanic_df
+except ImportError:
+    from data_loader import load_titanic_df
 
 
 def _df() -> pd.DataFrame:

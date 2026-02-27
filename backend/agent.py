@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 
-from langchain_ollama import ChatOllama
+try:
+    from langchain_ollama import ChatOllama
+except Exception:
+    ChatOllama = None  # type: ignore[assignment]
 
-from backend.data_loader import load_titanic_df
-from backend.tools import average, calculate_percentage, count_by, histogram, summary_stats
+try:
+    from backend.data_loader import load_titanic_df
+    from backend.tools import average, calculate_percentage, count_by, histogram, summary_stats
+except ImportError:
+    from data_loader import load_titanic_df
+    from tools import average, calculate_percentage, count_by, histogram, summary_stats
 
 SYSTEM_PROMPT = """
 You are a Titanic dataset analysis assistant.
@@ -22,13 +30,39 @@ Rules you must follow:
 """
 
 
-_PLANNER_LLM = ChatOllama(
-    model="mistral",
-    temperature=0,
-    format="json",
-    num_predict=100,
-    client_kwargs={"timeout": 6},
-)
+MODE = "fallback"
+_PLANNER_LLM: Any | None = None
+
+
+def _initialize_runtime_mode() -> None:
+    """Initialize Ollama LLM mode, fallback safely when unavailable."""
+    global MODE, _PLANNER_LLM
+
+    use_ollama_env = os.getenv("USE_OLLAMA", "true").lower() == "true"
+
+    if ChatOllama is None or not use_ollama_env:
+        MODE = "fallback"
+        _PLANNER_LLM = None
+        print("Ollama disabled or unavailable: using deterministic fallback")
+        return
+
+    try:
+        llm = ChatOllama(
+            model="mistral",
+            temperature=0,
+            format="json",
+            num_predict=100,
+            client_kwargs={"timeout": 6},
+        )
+        llm.invoke('{"ping":"pong"}')
+        _PLANNER_LLM = llm
+        MODE = "llm"
+        print("Ollama detected: using LLM agent")
+    except Exception:
+        MODE = "fallback"
+        _PLANNER_LLM = None
+        print("Ollama disabled or unavailable: using deterministic fallback")
+
 
 _TOOL_REGISTRY = {
     "calculate_percentage": calculate_percentage,
@@ -41,6 +75,14 @@ _TOOL_REGISTRY = {
 
 def _available_columns() -> list[str]:
     return list(load_titanic_df().columns)
+
+
+def _match_column_in_query(query: str) -> str | None:
+    """Match a referenced column name using word boundaries."""
+    for col in _available_columns():
+        if re.search(rf"\b{re.escape(col)}\b", query):
+            return col
+    return None
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
@@ -62,8 +104,7 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
 
 def _fallback_plan(question: str) -> dict[str, Any]:
     q = question.lower()
-    columns = _available_columns()
-    matched_column = next((col for col in columns if col in q), None)
+    matched_column = _match_column_in_query(q)
 
     if "histogram" in q and matched_column:
         return {"tool": "histogram", "args": {"column": matched_column}}
@@ -88,6 +129,9 @@ def _fallback_plan(question: str) -> dict[str, Any]:
 
 
 def _plan_tool_call(question: str) -> dict[str, Any]:
+    if MODE != "llm" or _PLANNER_LLM is None:
+        return _fallback_plan(question)
+
     planner_prompt = f"""
 {SYSTEM_PROMPT.strip()}
 You must return ONLY valid JSON with this schema:
@@ -128,6 +172,9 @@ Question: {question}
     if planned["tool"] == "count_by" and not any(k in q for k in ("count", "how many", "by", "group")):
         return _fallback_plan(question)
     return planned
+
+
+_initialize_runtime_mode()
 
 
 def _format_fallback(tool_result: dict[str, Any]) -> str:

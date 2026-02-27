@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import base64
+import os
 from typing import Any
 
 import requests
 import streamlit as st
 
-BACKEND_URL = "http://localhost:8000/chat"
+
+def _get_backend_url() -> str:
+    """Resolve backend URL from secrets/env, with local fallback."""
+    secret_url = st.secrets.get("BACKEND_URL")
+    env_url = os.getenv("BACKEND_URL")
+    return str(secret_url or env_url or "http://localhost:8000/chat")
+
+
+BACKEND_URL = _get_backend_url()
 
 st.set_page_config(page_title="Titanic Chat Agent", page_icon=":ship:")
 st.title("Titanic Dataset Chat Agent")
@@ -16,6 +25,7 @@ st.write(
     "Ask questions about the Titanic passenger dataset. "
     "The assistant uses deterministic pandas tools for every calculation."
 )
+st.caption(f"Backend: {BACKEND_URL}")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []

@@ -13,6 +13,15 @@ except ImportError:
 app = FastAPI(title="Titanic Chat Agent")
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "message": "Titanic Chat Agent backend is running",
+        "docs": "/docs",
+    }
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, description="Natural language user question")
 

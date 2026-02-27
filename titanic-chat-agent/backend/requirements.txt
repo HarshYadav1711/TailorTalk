@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+langchain
+langchain-ollama
+pandas
+matplotlib
+pydantic
+streamlit
+requests
